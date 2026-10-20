@@ -1,0 +1,67 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Gallery</title>
+<script>try{document.documentElement.dataset.t=localStorage.t||(matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light')}catch{}</script>
+<style>
+:root{--bg:#f1f4f9;--cd:#fff;--tx:#101828;--mu:#5d6b82;--ac:#2b59ff;--on:#fff;--bd:#dde3ee}
+[data-t=dark]{--bg:#0b1020;--cd:#131a2e;--tx:#eef2ff;--mu:#93a0bd;--ac:#7c9bff;--on:#0b1020;--bd:#222c48}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 ui-rounded,system-ui,sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--bg);padding:10px 14px;display:flex;gap:8px;border-bottom:1px solid var(--bd)}
+input,button{font:inherit;color:inherit}
+#q{flex:1;min-width:0;padding:0 14px;min-height:44px;border-radius:12px;border:1px solid var(--bd);background:var(--cd)}
+button,.bt{min-height:44px;padding:0 14px;border-radius:12px;border:1px solid var(--bd);background:var(--cd);cursor:pointer;display:inline-flex;align-items:center;gap:6px;text-decoration:none;color:var(--tx)}
+button.on{background:var(--ac);color:var(--on);border-color:var(--ac)}
+#ch{display:flex;gap:8px;overflow-x:auto;padding:10px 14px}#ch button{white-space:nowrap;min-height:38px;border-radius:99px}
+#back{margin:10px 14px}
+#g{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:14px;padding:4px 14px 14px;max-width:1200px;margin:auto}
+.card{background:var(--cd);border:1px solid var(--bd);border-radius:18px;overflow:hidden}
+.card img,.card video{display:block;width:100%;max-height:75vh;object-fit:contain;background:#000}
+.au{padding:18px 14px 4px}.au audio{width:100%}
+.b{padding:12px 14px}h3{margin:0 0 4px;font-size:17px}.b p{margin:0 0 6px;white-space:pre-wrap;overflow-wrap:anywhere}
+.tg a{color:var(--ac);text-decoration:none;margin-right:8px;font-size:14px}
+.ac{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.ac>*{flex:1 1 auto;justify-content:center;padding:0 10px}
+.ac .on{background:var(--ac);color:var(--on)}
+#more{display:block;margin:6px auto 30px}#empty{text-align:center;color:var(--mu);padding:40px}
+#toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:10px 16px;border-radius:99px;opacity:0;transition:.2s;pointer-events:none}#toast.s{opacity:1}
+</style></head><body>
+<header><input id="q" type="search" placeholder="Search posts" aria-label="Search"><button id="th" aria-label="Switch theme">◐</button></header>
+<div id="ch"></div><a id="back" class="bt" href="/" hidden>← All posts</a>
+<main id="g"></main><p id="empty" hidden>Nothing here yet.</p><button id="more" hidden>Load more</button><div id="toast"></div>
+<script>
+const $=s=>document.querySelector(s),LS=(k,d)=>{try{return JSON.parse(localStorage[k])}catch{return d}},SV=(k,v)=>{try{localStorage[k]=JSON.stringify(v)}catch{}};
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let P=[],cfg={},S={},list=[],shown=0,single=null,f={q:'',k:'',sv:false};
+const saved=new Set(LS('saved',[])),liked=new Set(LS('liked',[])),N=12;
+const mu=m=>(cfg.mediaBase?cfg.mediaBase.replace(/\/$/,'')+'/':'/media/')+m;
+const toast=t=>{const e=$('#toast');e.textContent=t;e.classList.add('s');setTimeout(()=>e.classList.remove('s'),1600)};
+function card(p){const u=mu(p.m),md=p.y==='video'?`<video src="${u}" controls playsinline preload="metadata"></video>`:p.y==='audio'?`<div class="au"><audio src="${u}" controls preload="none"></audio></div>`:`<img src="${u}" loading="lazy" alt="${esc(p.t)}">`;
+ return `<article class="card" data-id="${p.id}">${md}<div class="b">${p.t?`<h3>${esc(p.t)}</h3>`:''}<p>${esc(p.c)}</p><div class="tg">${p.g.map(t=>`<a href="#" data-tag="${esc(t)}">#${esc(t)}</a>`).join('')}</div>
+<div class="ac"><a class="bt" href="/p/${p.id}" data-a="view">👁 <span class="n"></span></a><button data-a="like" class="${liked.has(p.id)?'on':''}">♥ <span class="n"></span></button><button data-a="save" class="${saved.has(p.id)?'on':''}">🔖</button><button data-a="copy">🔗 Copy</button></div></div></article>`}
+function upd(id){const c=document.querySelector(`[data-id="${id}"]`);if(!c||!cfg.likes)return;const s=S[id]||[0,0];c.querySelector('[data-a=like] .n').textContent=s[0]||'';c.querySelector('[data-a=view] .n').textContent=s[1]||''}
+async function stats(ids){if(!cfg.likes||!ids.length)return;try{const d=await(await fetch('/api/stats?ids='+ids.join(','))).json();for(const id of ids){S[id]=d[id]||[0,0];upd(id)}}catch{}}
+function draw(reset){const g=$('#g');if(reset){g.innerHTML='';shown=0}const part=list.slice(shown,shown+N);g.insertAdjacentHTML('beforeend',part.map(card).join(''));shown+=part.length;part.forEach(p=>upd(p.id));stats(part.map(p=>p.id));$('#more').hidden=shown>=list.length;$('#empty').hidden=!!list.length}
+function filt(){list=P.filter(p=>(!f.k||p.k===f.k||p.y===f.k)&&(!f.sv||saved.has(p.id))&&(!f.q||(p.t+' '+p.c+' '+p.g.join(' ')+' '+p.k).toLowerCase().includes(f.q)));draw(true)}
+function chips(){const ks=[...new Set(P.map(p=>p.k).filter(Boolean))].sort(),ts=[...new Set(P.map(p=>p.y))];
+ const b=(l,k,sv)=>`<button class="${(sv?f.sv:!f.sv&&f.k===k)?'on':''}" data-k="${esc(k)}" ${sv?'data-sv=1':''}>${esc(l)}</button>`;
+ $('#ch').innerHTML=b('All','')+b('🔖 Saved','',1)+ts.map(t=>b(t,t)).join('')+ks.map(k=>b(k,k)).join('')}
+function view(id){if(!cfg.likes)return;try{if(sessionStorage['v'+id])return;sessionStorage['v'+id]=1}catch{}fetch('/api/view/'+id,{method:'POST'}).catch(()=>{})}
+function route(){const m=location.pathname.match(/^\/p\/([a-f0-9]{12})/);single=m&&m[1];$('#ch').hidden=!!single;$('#back').hidden=!single;
+ if(single){const p=P.find(x=>x.id===single);list=p?[p]:[];$('#empty').textContent='This post is gone.';draw(true);if(p){document.title=p.t||'Post';view(p.id)}}
+ else{document.title='Gallery';$('#empty').textContent='Nothing here yet.';filt()}window.scrollTo(0,0)}
+const go=p=>{history.pushState(0,'',p);route()};
+async function like(id,b){const on=!liked.has(id);on?liked.add(id):liked.delete(id);SV('liked',[...liked]);b.classList.toggle('on',on);if(!cfg.likes)return;
+ try{const d=await(await fetch('/api/like/'+id,{method:'POST',body:JSON.stringify({on})})).json();if(d.likes!==undefined){S[id]=[d.likes,(S[id]||[0,0])[1]];upd(id)}}catch{}}
+document.addEventListener('click',async e=>{const t=e.target.closest('[data-a],[data-k],[data-tag],#th,#back,#more');if(!t)return;
+ if(t.id==='th'){const n=document.documentElement.dataset.t==='dark'?'light':'dark';document.documentElement.dataset.t=n;try{localStorage.t=n}catch{}return}
+ if(t.id==='more')return draw();
+ if(t.id==='back'){e.preventDefault();return go('/')}
+ if(t.dataset.k!==undefined){f.k=t.dataset.k;f.sv=!!t.dataset.sv;chips();return filt()}
+ if(t.dataset.tag){e.preventDefault();f.q=t.dataset.tag;$('#q').value=f.q;return single?go('/'):filt()}
+ const id=t.closest('.card').dataset.id,a=t.dataset.a;
+ if(a==='view'){e.preventDefault();go('/p/'+id)}
+ if(a==='like')like(id,t);
+ if(a==='save'){saved.has(id)?saved.delete(id):saved.add(id);SV('saved',[...saved]);t.classList.toggle('on');toast(saved.has(id)?'Saved':'Removed')}
+ if(a==='copy'){const u=location.origin+'/p/'+id;try{await navigator.clipboard.writeText(u);toast('Link copied')}catch{prompt('Copy this link',u)}}});
+$('#q').addEventListener('input',e=>{f.q=e.target.value.trim().toLowerCase();if(single)history.pushState(0,'','/'),route();else filt()});
+addEventListener('popstate',route);
+(async()=>{try{[cfg,P]=await Promise.all([fetch('/api/config').then(r=>r.json()),fetch('/api/posts').then(r=>r.json())])}catch{$('#empty').textContent='Could not load posts.'}
+ chips();route();new IntersectionObserver(e=>{if(e[0].isIntersecting&&shown<list.length)draw()},{rootMargin:'600px'}).observe($('#more'))})();
+</script></body></html>

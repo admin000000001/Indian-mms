@@ -1,0 +1,74 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><meta name="robots" content="noindex"><title>Admin</title>
+<style>
+:root{--bg:#f1f4f9;--cd:#fff;--tx:#101828;--mu:#5d6b82;--ac:#2b59ff;--on:#fff;--bd:#dde3ee;--rd:#d92d20}
+@media(prefers-color-scheme:dark){:root{--bg:#0b1020;--cd:#131a2e;--tx:#eef2ff;--mu:#93a0bd;--ac:#7c9bff;--on:#0b1020;--bd:#222c48;--rd:#ff7a70}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.5 ui-rounded,system-ui,sans-serif;padding:14px;max-width:640px;margin:auto}
+input,textarea,button,.fb{font:inherit;color:inherit;width:100%;min-height:48px;padding:10px 14px;margin:0 0 10px;border-radius:12px;border:1px solid var(--bd);background:var(--cd);display:block}
+button,.fb{cursor:pointer;text-align:center}.on{background:var(--ac);color:var(--on);border-color:var(--ac);font-weight:600}.dg{color:var(--rd)}
+nav{display:flex;gap:6px}nav button{margin:0 0 12px;padding:0 6px}
+.row{display:flex;gap:8px;align-items:center;background:var(--cd);border:1px solid var(--bd);border-radius:14px;padding:8px;margin-bottom:8px}
+.row button{width:auto;margin:0;min-height:44px}.th{width:56px;height:56px;border-radius:10px;overflow:hidden;background:#000;display:grid;place-items:center;flex:none}.th img,.th video{width:100%;height:100%;object-fit:cover}
+.rt{flex:1;min-width:0}.rt b,.rt small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}small{color:var(--mu)}
+#pv img,#pv video{width:100%;border-radius:14px;margin-bottom:10px;max-height:50vh;object-fit:contain;background:#000}#pv audio{width:100%;margin-bottom:10px}
+progress{width:100%;height:12px;margin-bottom:10px}#msg,#lm{color:var(--mu);overflow-wrap:anywhere}
+dialog{width:min(94vw,600px);border:1px solid var(--bd);border-radius:18px;background:var(--bg);color:var(--tx);padding:16px}[hidden]{display:none!important}
+</style></head><body>
+<section id="login"><h2>Admin sign in</h2><input id="pw" type="password" placeholder="Password" autocomplete="current-password"><button id="go" class="on">Sign in</button><p id="le" class="dg"></p></section>
+<section id="app" hidden>
+<nav><button data-tab="new" class="on">New post</button><button data-tab="list">Manage</button><button data-tab="st">Stats</button><button id="out">Sign out</button></nav>
+<div id="t-new"><label class="fb">📁 Choose photo, video, GIF or audio<input id="file" type="file" accept="image/*,video/*,audio/*" hidden></label>
+<div id="pv"><div id="pm"></div><div id="pt"></div></div><input id="t" placeholder="Title"><textarea id="c" rows="4" placeholder="Caption"></textarea><input id="k" placeholder="Category (e.g. Travel)"><input id="g" placeholder="Tags, separated by commas">
+<progress id="pr" max="1" value="0" hidden></progress><p id="msg"></p><button id="pub" class="on">Publish</button></div>
+<div id="t-list" hidden><input id="s" type="search" placeholder="Search posts"><div id="rows"></div><button id="lm">Load more</button></div>
+<div id="t-st" hidden><div id="stt"></div></div></section>
+<dialog id="ed"><h3>Edit post</h3><input id="et" placeholder="Title"><textarea id="ec" rows="4" placeholder="Caption"></textarea><input id="ek" placeholder="Category"><input id="eg" placeholder="Tags, comma separated">
+<label class="fb">Replace media (optional)<input id="ef" type="file" accept="image/*,video/*,audio/*" hidden></label><p id="efn"></p><progress id="ep" max="1" value="0" hidden></progress><p id="em" class="dg"></p><button id="es" class="on">Save changes</button><button id="ex">Cancel</button></dialog>
+<script>
+const $=s=>document.querySelector(s),esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let P=[],cfg={},shown=0,list=[],cur=null;const PG=20;
+const mu=m=>(cfg.mediaBase?cfg.mediaBase.replace(/\/$/,'')+'/':'/media/')+m,tags=v=>v.split(',').map(s=>s.trim()).filter(Boolean);
+function view(v){$('#login').hidden=v!=='login';$('#app').hidden=v==='login'}
+async function api(path,o={}){const r=await fetch(path,{method:o.method||'GET',credentials:'same-origin',headers:{'x-req':'1',...(o.json?{'content-type':'application/json'}:{})},body:o.json?JSON.stringify(o.json):undefined});let d={};try{d=await r.json()}catch{}
+ if(r.status===401&&path!=='/api/login')view('login');if(!r.ok)throw Error(d.error||'Error '+r.status);return d}
+const put=(url,blob,onp)=>new Promise((ok,no)=>{const x=new XMLHttpRequest();x.open('PUT',url);x.setRequestHeader('x-req','1');x.upload.onprogress=e=>onp(e.loaded);
+ x.onload=()=>{let d={};try{d=JSON.parse(x.responseText)}catch{}x.status<300?ok(d):no(Error(d.error||'Upload error '+x.status))};x.onerror=()=>no(Error('Network error'));x.send(blob)});
+async function upload(file,onp){const{key,uploadId}=await api('/api/admin/up/start',{method:'POST',json:{name:file.name,type:file.type}});
+ const CH=8*1024*1024,n=Math.max(1,Math.ceil(file.size/CH)),parts=[];let done=0;
+ for(let i=0;i<n;i++){const blob=file.slice(i*CH,(i+1)*CH);
+  for(let t=0;;t++){try{parts.push(await put(`/api/admin/up/part?key=${encodeURIComponent(key)}&uploadId=${encodeURIComponent(uploadId)}&n=${i+1}`,blob,l=>onp((done+l)/file.size)));break}
+   catch(e){if(t>=3)throw e;await new Promise(r=>setTimeout(r,1500*(t+1)))}}done+=blob.size}
+ await api('/api/admin/up/done',{method:'POST',json:{key,uploadId,parts}});return key}
+async function reload(){P=await(await fetch('/api/posts',{cache:'no-store'})).json()}
+async function boot(){try{await api('/api/admin/me');cfg=await(await fetch('/api/config')).json();await reload();view('app');filt()}catch{view('login')}}
+$('#go').onclick=async()=>{$('#le').textContent='';try{await api('/api/login',{method:'POST',json:{password:$('#pw').value}});$('#pw').value='';boot()}catch(e){$('#le').textContent=e.message}};
+$('#out').onclick=async()=>{await api('/api/logout');view('login')};
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=async()=>{document.querySelectorAll('[data-tab]').forEach(x=>x.classList.toggle('on',x===b));
+ for(const t of['new','list','st'])$('#t-'+t).hidden=t!==b.dataset.tab;if(b.dataset.tab==='st')stats()});
+// New post
+let file=null,url=null;
+function pvw(){let m='';if(file){url&&URL.revokeObjectURL(url);url=URL.createObjectURL(file);const y=file.type.split('/')[0];
+ m=y==='video'?`<video src="${url}" controls playsinline></video>`:y==='audio'?`<audio src="${url}" controls></audio>`:`<img src="${url}">`}
+ $('#pm').innerHTML=m;txt()}
+function txt(){const t=$('#t').value,c=$('#c').value;$('#pt').innerHTML=(t?`<h3>${esc(t)}</h3>`:'')+(c?`<p>${esc(c)}</p>`:'')}
+$('#file').onchange=e=>{file=e.target.files[0]||null;pvw()};$('#t').oninput=$('#c').oninput=txt;
+$('#pub').onclick=async()=>{const msg=$('#msg'),pr=$('#pr'),b=$('#pub');msg.textContent='';if(!file)return msg.textContent='Choose a file first.';
+ b.disabled=true;pr.hidden=false;pr.value=0;try{msg.textContent='Uploading…';const key=await upload(file,v=>pr.value=v);msg.textContent='Publishing…';
+  const p=await api('/api/admin/post',{method:'POST',json:{t:$('#t').value,c:$('#c').value,k:$('#k').value,g:tags($('#g').value),key}});
+  msg.innerHTML=`Published. <a href="/p/${p.id}" target="_blank">Open post</a>`;file=null;$('#file').value='';for(const i of['t','c','k','g'])$('#'+i).value='';$('#pm').innerHTML=$('#pt').innerHTML='';await reload();filt()}
+ catch(e){msg.textContent='Failed: '+e.message+'. Tap Publish to try again.'}b.disabled=false;pr.hidden=true};
+// Manage
+function row(p){const u=mu(p.m);return `<div class="row"><div class="th">${p.y==='image'?`<img src="${u}" loading="lazy">`:p.y==='video'?`<video src="${u}#t=0.1" preload="metadata" muted></video>`:'🎵'}</div><div class="rt"><b>${esc(p.t||'(no title)')}</b><small>${esc(p.c)}</small></div><button data-e="${p.id}">Edit</button><button data-d="${p.id}" class="dg">Delete</button></div>`}
+function filt(reset=true){const q=$('#s').value.trim().toLowerCase();if(reset){list=P.filter(p=>!q||(p.t+' '+p.c+' '+p.g.join(' ')+' '+p.k).toLowerCase().includes(q));shown=0;$('#rows').innerHTML=''}
+ const part=list.slice(shown,shown+PG);$('#rows').insertAdjacentHTML('beforeend',part.map(row).join(''));shown+=part.length;$('#lm').hidden=shown>=list.length}
+$('#s').oninput=()=>filt();$('#lm').onclick=()=>filt(false);
+$('#rows').onclick=async e=>{const b=e.target.closest('button');if(!b)return;
+ if(b.dataset.d){if(!confirm('Delete this post and its media? This cannot be undone.'))return;try{await api('/api/admin/post/'+b.dataset.d,{method:'DELETE'});await reload();filt()}catch(x){alert(x.message)}}
+ if(b.dataset.e){cur=P.find(p=>p.id===b.dataset.e);$('#et').value=cur.t;$('#ec').value=cur.c;$('#ek').value=cur.k;$('#eg').value=cur.g.join(', ');$('#ef').value='';$('#efn').textContent='';$('#em').textContent='';$('#ed').showModal()}};
+$('#ef').onchange=e=>$('#efn').textContent=e.target.files[0]?.name||'';$('#ex').onclick=()=>$('#ed').close();
+$('#es').onclick=async()=>{const b=$('#es'),pr=$('#ep'),f=$('#ef').files[0];b.disabled=true;$('#em').textContent='';try{let key;if(f){pr.hidden=false;pr.value=0;key=await upload(f,v=>pr.value=v)}
+ await api('/api/admin/post/'+cur.id,{method:'PUT',json:{t:$('#et').value,c:$('#ec').value,k:$('#ek').value,g:tags($('#eg').value),key}});$('#ed').close();await reload();filt()}
+ catch(e){$('#em').textContent='Failed: '+e.message}b.disabled=false;pr.hidden=true};
+async function stats(){try{const s=await api('/api/admin/stats'),mb=(s.bytes/1048576).toFixed(1);
+ $('#stt').innerHTML=[['Posts',s.posts],['Photos/GIFs',s.image],['Videos',s.video],['Audio',s.audio],['Media stored',mb+' MB (free limit 10 GB)'],...(s.likes!==undefined?[['Likes',s.likes],['Views',s.views]]:[['Likes/views','Turn on D1 to see these']])].map(([a,b])=>`<div class="row"><div class="rt"><b>${a}</b></div><span>${b}</span></div>`).join('')}catch(e){$('#stt').textContent=e.message}}
+boot();
+</script></body></html>
